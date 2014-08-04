@@ -121,3 +121,28 @@
                          open-posns))
                   (range 2 5 2)))))
        (range 0 4)))
+
+(defn board-line
+  [items head-separator body-separator tail-separator]
+  (apply str (concat [head-separator]
+                     (interpose body-separator items)
+                     [tail-separator (format "%n")])))
+
+(defn board-str
+  [[grid score]]
+  (apply str (concat [(board-line (repeat 4 (apply str (repeat 6 \u2500)))
+                                  \u250c
+                                  \u252c
+                                  \u2510)]
+                     (interpose
+                       (board-line (repeat 4 (apply str (repeat 6 \u2500)))
+                                   \u251c
+                                   \u253c
+                                   \u2524)
+                       (map #(board-line % \u2502 \u2502 \u2502)
+                            (map (fn [y] (map #(format "%6d" (nth % y)) grid))
+                                 (range 0 4))))
+                     [(board-line (repeat 4 (apply str (repeat 6 \u2500)))
+                                  \u2514
+                                  \u2534
+                                  \u2518)])))

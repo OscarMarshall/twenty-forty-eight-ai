@@ -4,7 +4,9 @@
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :dependencies [[org.clojure/clojure "1.6.0"]
+                 [clj-webdriver "0.6.0"]
                  [org.clojure/tools.trace "0.7.8"]]
   :main ^:skip-aot twenty-forty-eight-ai.core
+  :jvm-opts ["-Dfile.encoding=UTF-8"]
   :target-path "target/%s"
   :profiles {:uberjar {:aot :all}})
