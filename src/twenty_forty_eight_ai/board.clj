@@ -47,7 +47,7 @@
 
 (defn max-tile-value
   [grid]
-  (level->value (reduce max (map #(reduce max %) grid))))
+  (level->value (apply max (flatten grid))))
 
 (def neighbor-posns
   (memoize (fn [[x y]]
@@ -81,15 +81,15 @@
   (reduce (fn [[grid score] [column subscore]]
             [(conj grid column) (+ score subscore)])
           [[] score]
-          (map #(loop [x (filter pos? %)
+          (map #(loop [x      (filter pos? %)
                        column []
-                       score 0]
+                       score  0]
                   (if (empty? x)
                     [(into [] (concat column (repeat (- 4 (count column)) 0)))
                      score]
                     (let [current (first x)]
                       (if (= (second x) current)
-                        (let [current (int current)]
+                        (let [current (inc current)]
                           (recur (drop 2 x)
                                  (conj column current)
                                  (+ score (level->value current))))
@@ -108,19 +108,27 @@
   [grid]
   (filter #(== (get-in grid %) 0) (for [x (range 0 4) y (range 0 4)] [x y])))
 
-(defn possibilities
+(defn direction-possibilities
+  [[grid score] direction]
+  (let [old-grid         grid
+        [new-grid score] (shift [grid score] direction)]
+    (when (not= new-grid old-grid)
+      (let [open-posns (open-posns new-grid)]
+        (for [posn  open-posns
+              value (range 2 5 2)]
+          [(set-tile-value new-grid posn value) score])))))
+
+(defn all-possibilities
   [[grid score]]
-  (map (fn [direction]
-         (let [[new-grid score] (shift [grid score] direction)
-               old-grid         grid
-               open-posns       (open-posns new-grid)]
-           (when (not= new-grid old-grid)
-             (map (fn [value]
-                    (map (fn [posn]
-                           [(set-tile-value new-grid posn value) score])
-                         open-posns))
-                  (range 2 5 2)))))
-       (range 0 4)))
+  (map #(direction-possibilities [grid score] %) (range 0 4)))
+
+(defn possible-directions
+  [[grid score]]
+  (filter (fn [direction]
+            (let [old-grid         grid
+                  [new-grid score] (shift [grid score] direction)]
+              (not= new-grid old-grid)))
+          (range 0 4)))
 
 (defn board-line
   [items head-separator body-separator tail-separator]
@@ -140,7 +148,12 @@
                                    \u253c
                                    \u2524)
                        (map #(board-line % \u2502 \u2502 \u2502)
-                            (map (fn [y] (map #(format "%6d" (nth % y)) grid))
+                            (map (fn [y]
+                                   (map #(let [value (level->value (nth % y))]
+                                           (if (zero? value)
+                                             (apply str (repeat 6 \space))
+                                             (format "%6d" value)))
+                                        grid))
                                  (range 0 4))))
                      [(board-line (repeat 4 (apply str (repeat 6 \u2500)))
                                   \u2514
