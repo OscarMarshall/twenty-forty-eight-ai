@@ -1,53 +1,8 @@
 (ns twenty-forty-eight-ai.board)
 
-; A value is a number #(>= 0 %) #(== (.pow 2 x) %)
-
-; A level is a number #(>= 0 %)
-
-; A score is a number #(>= 0 %)
-
-; A grid is a
-;   [[level level level level]
-;    [level level level level]
-;    [level level level level]
-;    [level level level level]]
-
-; A board is a [grid score]
-
-(def level->value
-  "Takes a level and converts it to a value"
-  (memoize (fn [level]
-             (assert (>= level 0))
-             (case level
-               0 0
-               1 2
-               (* (level->value (dec level)) 2)))))
-
-(def value->level
-  "Takes a value and converts it to a level"
-  (memoize (fn [value]
-             (assert (zero? (rem value 2)))
-             (case value
-               0 0
-               2 1
-               (inc (value->level (quot value 2)))))))
-
-(defn set-tile-value
-  "Returns the grid with the tile at posn set to value"
-  [grid posn value]
-  (assoc-in grid posn (value->level value)))
-
-(defn get-tile-value
-  [grid posn]
-  (level->value (get-in grid posn)))
-
-(defn value-grid->level-grid
-  [grid]
-  (into [] (map #(into [] (map value->level %)) grid)))
-
 (defn max-tile-value
   [grid]
-  (level->value (apply max (flatten grid))))
+  (apply max (flatten grid)))
 
 (def neighbor-posns
   (memoize (fn [[x y]]
@@ -56,9 +11,9 @@
 
 (defn game-over?
   [grid]
-  (every? (fn [x] (every? (fn [y] (let [level (get-in grid [x y])]
-                                    (and (not (zero? level))
-                                         (every? #(not= (get-in grid %) level)
+  (every? (fn [x] (every? (fn [y] (let [value (get-in grid [x y])]
+                                    (and (not (zero? value))
+                                         (every? #(not= (get-in grid %) value)
                                                  (neighbor-posns [x y])))))
                           (range 0 4)))
           (range 0 4)))
@@ -89,10 +44,10 @@
                      score]
                     (let [current (first x)]
                       (if (= (second x) current)
-                        (let [current (inc current)]
+                        (let [current (* current 2)]
                           (recur (drop 2 x)
                                  (conj column current)
-                                 (+ score (level->value current))))
+                                 (+ score current)))
                         (recur (drop 1 x) (conj column current) score)))))
                grid)))
 
@@ -110,13 +65,10 @@
 
 (defn direction-possibilities
   [[grid score] direction]
-  (let [old-grid         grid
-        [new-grid score] (shift [grid score] direction)]
-    (when (not= new-grid old-grid)
-      (let [open-posns (open-posns new-grid)]
-        (for [posn  open-posns
-              value (range 2 5 2)]
-          [(set-tile-value new-grid posn value) score])))))
+  (let [[new-grid score] (shift [grid score] direction)]
+    (for [posn  (if (not= new-grid grid) (open-posns new-grid) [])
+          value [2 4]]
+      [(assoc-in new-grid posn value) score])))
 
 (defn all-possibilities
   [[grid score]]
@@ -149,7 +101,7 @@
                                    \u2524)
                        (map #(board-line % \u2502 \u2502 \u2502)
                             (map (fn [y]
-                                   (map #(let [value (level->value (nth % y))]
+                                   (map #(let [value (nth % y)]
                                            (if (zero? value)
                                              (apply str (repeat 6 \space))
                                              (format "%6d" value)))
