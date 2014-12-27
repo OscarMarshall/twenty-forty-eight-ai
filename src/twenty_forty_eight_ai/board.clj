@@ -1,113 +1,101 @@
-(ns twenty-forty-eight-ai.board)
+(ns twenty-forty-eight-ai.board
+  (:require [clojure.string :refer [join]]))
 
-(defn max-tile-value
+(defn max-tile
   [grid]
   (apply max (flatten grid)))
 
 (def neighbor-posns
-  (memoize (fn [[x y]]
-             (filter (fn [[x y]] (and (>= x 0) (< x 4) (>= y 0) (< y 4)))
-                     [[x (- y 1)] [(+ x 1) y] [x (+ y 1)] [(- x 1) y]]))))
+  (memoize (fn [[x y] dirs]
+             (filter (fn [[x y]] (and (<= 0 x 3) (<= 0 y 3)))
+                     (for [dir dirs]
+                       (case dir
+                         0 [x (dec y)]
+                         1 [(inc x) y]
+                         2 [x (inc y)]
+                         3 [(dec x) y]))))))
 
 (defn game-over?
   [grid]
-  (every? (fn [x] (every? (fn [y] (let [value (get-in grid [x y])]
-                                    (and (not (zero? value))
-                                         (every? #(not= (get-in grid %) value)
-                                                 (neighbor-posns [x y])))))
-                          (range 0 4)))
+  (every? (fn [x]
+            (every? (fn [y]
+                      (let [value (get-in grid [x y])]
+                        (and (not (zero? value))
+                             (every? #(not= (get-in grid %) value)
+                                     (neighbor-posns [x y] [0 3])))))
+                    (range 0 4)))
           (range 0 4)))
 
 (defn rotate-cw
   [grid turns]
-  (assert (not (neg? turns)))
+  {:pre [(not (neg? turns))]}
   (case (rem turns 4)
     0 grid
-    1 (into [] (map (fn [y] (into [] (map #(get-in grid [% y])
-                                          (range 0 4))))
-                    (range 3 -1 -1)))
-    2 (into [] (reverse (map #(into [] (reverse %)) grid)))
-    3 (into [] (map (fn [y] (into [] (map #(get-in grid [% y])
-                                          (range 3 -1 -1))))
-                    (range 0 4)))))
+    1 (vec (map (fn [y] (vec (map #(get-in grid [% y]) (range 0 4))))
+                (range 3 -1 -1)))
+    2 (vec (reverse (map #(vec (reverse %)) grid)))
+    3 (vec (map (fn [y] (vec (map #(get-in grid [% y]) (range 3 -1 -1))))
+                (range 0 4)))))
 
 (defn shift-up
-  [[grid score]]
-  (reduce (fn [[grid score] [column subscore]]
-            [(conj grid column) (+ score subscore)])
-          [[] score]
+  [grid]
+  (reduce conj
+          []
           (map #(loop [x      (filter pos? %)
-                       column []
-                       score  0]
+                       column []]
                   (if (empty? x)
-                    [(into [] (concat column (repeat (- 4 (count column)) 0)))
-                     score]
+                    (vec (concat column (repeat (- 4 (count column)) 0)))
                     (let [current (first x)]
                       (if (= (second x) current)
-                        (let [current (* current 2)]
-                          (recur (drop 2 x)
-                                 (conj column current)
-                                 (+ score current)))
-                        (recur (drop 1 x) (conj column current) score)))))
+                        (recur (drop 2 x) (conj column (* current 2)))
+                        (recur (drop 1 x) (conj column current))))))
                grid)))
 
 (defn shift
-  [[grid score] direction]
-  (assert (not (neg? direction)))
-  (if (zero? direction)
-    (shift-up [grid score])
-    (let [[grid score] (shift-up [(rotate-cw grid (- 4 direction)) score])]
-        [(rotate-cw grid direction) score])))
+  [grid dir]
+  {:pre [(not (neg? dir))]}
+  (let [grid (shift-up (rotate-cw grid (- 4 dir)))]
+    (rotate-cw grid dir)))
 
 (defn open-posns
   [grid]
-  (filter #(== (get-in grid %) 0) (for [x (range 0 4) y (range 0 4)] [x y])))
+  (filter #(zero? (get-in grid %)) (for [x (range 0 4) y (range 0 4)] [x y])))
 
-(defn direction-possibilities
-  [[grid score] direction]
-  (let [[new-grid score] (shift [grid score] direction)]
-    (for [posn  (if (not= new-grid grid) (open-posns new-grid) [])
-          value [2 4]]
-      [(assoc-in new-grid posn value) score])))
+(defn dir-possibilities
+  [grid dir tile]
+  (let [new-grid (shift grid dir)]
+    (for [posn  (when (not= new-grid grid) (open-posns new-grid))]
+      (assoc-in new-grid posn tile))))
 
 (defn all-possibilities
-  [[grid score]]
-  (map #(direction-possibilities [grid score] %) (range 0 4)))
+  [grid]
+  (map (fn [dir]
+         (map #(dir-possibilities grid dir %)
+              '(2 4)))
+       (range 0 4)))
 
-(defn possible-directions
-  [[grid score]]
-  (filter (fn [direction]
-            (let [old-grid         grid
-                  [new-grid score] (shift [grid score] direction)]
+(defn possible-dirs
+  [grid]
+  (filter (fn [dir]
+            (let [old-grid grid
+                  new-grid (shift grid dir)]
               (not= new-grid old-grid)))
           (range 0 4)))
 
-(defn board-line
-  [items head-separator body-separator tail-separator]
-  (apply str (concat [head-separator]
-                     (interpose body-separator items)
-                     [tail-separator (format "%n")])))
+(defn grid-ln
+  [cells head-sep body-sep tail-sep]
+  (join (list head-sep (join body-sep cells) tail-sep (format "%n"))))
 
-(defn board-str
-  [[grid score]]
-  (apply str (concat [(board-line (repeat 4 (apply str (repeat 6 \u2500)))
-                                  \u250c
-                                  \u252c
-                                  \u2510)]
-                     (interpose
-                       (board-line (repeat 4 (apply str (repeat 6 \u2500)))
-                                   \u251c
-                                   \u253c
-                                   \u2524)
-                       (map #(board-line % \u2502 \u2502 \u2502)
-                            (map (fn [y]
-                                   (map #(let [value (nth % y)]
-                                           (if (zero? value)
-                                             (apply str (repeat 6 \space))
-                                             (format "%6d" value)))
-                                        grid))
-                                 (range 0 4))))
-                     [(board-line (repeat 4 (apply str (repeat 6 \u2500)))
-                                  \u2514
-                                  \u2534
-                                  \u2518)])))
+(defn grid-str
+  [grid]
+  (join (list (grid-ln (repeat 4 (join (repeat 6 \─))) \┌ \┬ \┐)
+              (join (grid-ln (repeat 4 (join (repeat 6 \─))) \├ \┼ \┤)
+                    (map #(grid-ln % \│ \│ \│)
+                         (map (fn [y]
+                                (map #(let [value (nth % y)]
+                                        (if (zero? value)
+                                          (join (repeat 6 \space))
+                                          (format "%6d" value)))
+                                     grid))
+                              (range 0 4))))
+              (grid-ln (repeat 4 (join (repeat 6 \─))) \└ \┴ \┘))))
