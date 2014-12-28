@@ -48,7 +48,7 @@
             (println (str "Move " (inc moves) ":"))
             (println (str (now)))
             (let [start (now)
-                  dir   (pick-dir grid 4)
+                  dir   (pick-dir grid 3)
                   time  (- (.getTime (now)) (.getTime start))
                   times (cons time times)]
               (print (str "Direction: " (dir-str dir) (format "%n")

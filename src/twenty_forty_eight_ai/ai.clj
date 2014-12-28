@@ -25,7 +25,7 @@
 
 (defn flow-penalty-up
   [grid]
-  (apply + (map #(loop [x %, penalty 0]
+  (apply + (map #(loop [x (filter pos? %), penalty 0]
                    (cond
                      (nil? (second x))
                      penalty
@@ -112,7 +112,7 @@
                           dir)]
                  (+ (* (first tiles) 9/10) (* (second tiles) 1/10))))
              (all-possibilities grid))))
-    :lru/threshold 2097152))
+    :lru/threshold 65536))
 
 (defn pick-dir
   [grid moves]
