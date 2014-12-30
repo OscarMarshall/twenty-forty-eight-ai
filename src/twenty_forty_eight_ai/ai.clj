@@ -50,19 +50,25 @@
                  (reverse col)
                  col))))))
 
+(defn log2 [n]
+  (/ (Math/log n) (Math/log 2)))
+
 (defn zigzag-score-tl-up
-  [grid]
-  (loop [path zigzag-path
-         score 0]
-    (let [posn (first path)
-          this (get-in grid posn)]
-      (if (== (count path) 1)
-        (+ score this)
-        (let [that (get-in grid (second path))]
-          (cond
-            (== this that) (+ score (* this 2))
-            (< this that)  score
-            :else          (recur (rest path) (+ score this))))))))
+  ([grid] (zigzag-score-tl-up grid zigzag-path))
+  ([grid path]
+   (let [this (get-in grid (first path))]
+     (case (count path)
+       0
+       0
+
+       1
+       this
+
+       (+ this
+          (let [that (get-in grid (second path))]
+            (if (< this that)
+              (log2 (zigzag-score-tl-up grid (rest path)))
+              (zigzag-score-tl-up grid (rest path)))))))))
 
 (defn zigzag-score
   [grid]
