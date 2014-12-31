@@ -50,25 +50,51 @@
                  (reverse col)
                  col))))))
 
-(defn log2 [n]
-  (/ (Math/log n) (Math/log 2)))
-
 (defn zigzag-score-tl-up
   ([grid] (zigzag-score-tl-up grid zigzag-path))
   ([grid path]
+   {:post [(seq? %)]}
    (let [this (get-in grid (first path))]
      (case (count path)
        0
-       0
+       (list 0)
 
        1
-       this
+       (list this)
 
-       (+ this
-          (let [that (get-in grid (second path))]
-            (if (< this that)
-              (log2 (zigzag-score-tl-up grid (rest path)))
-              (zigzag-score-tl-up grid (rest path)))))))))
+       (let [that (get-in grid (second path))]
+         (cond
+           (< this that)
+           (cons this (zigzag-score-tl-up grid (rest path)))
+
+           (== this that)
+           (cons (* this 2) (zigzag-score-tl-up grid (drop 2 path)))
+
+           (> this that)
+           (let [results (zigzag-score-tl-up grid (rest path))]
+             (cons (+ this (first results)) (rest results)))))))))
+
+(defn max-number-list [& lists]
+  {:pre [(every? (partial every? number?) lists)]}
+  (case (count lists)
+    0 nil
+    1 (first lists)
+    (recur (cons (loop [x (first lists), y (second lists)]
+                   (cond
+                     (empty? y)              (first lists)
+                     (empty? x)              (second lists)
+                     (> (first x) (first y)) (first lists)
+                     (< (first x) (first y)) (second lists)
+                     :else                   (recur (rest x) (rest y))))
+                 (drop 2 lists)))))
+
+(defn sum-number-lists [& lists]
+  (cond
+    (zero? (count lists)) nil
+    (every? empty? lists) nil
+    (== (count lists) 1)  (first lists)
+    :default              (cons (apply + (filter identity (map first lists)))
+                                (apply sum-number-lists (map rest lists)))))
 
 (defn zigzag-score
   [grid]
@@ -84,8 +110,7 @@
 
         grid*
         (vec (map #(vec (reverse %)) (rotate-cw grid 3)))]
-    (max (- (zigzag-score-tl-up grid) (flow-penalty-up grid))
-         (- (zigzag-score-tl-up grid*) (flow-penalty-up grid*)))))
+    (max-number-list (zigzag-score-tl-up grid) (zigzag-score-tl-up grid*))))
 
 (defn board-score
   [grid]
@@ -98,7 +123,7 @@
     (fn [grid moves]
       (cond
         (game-over? grid)
-        [0 0 0 0]
+        ['() '() '() '()]
 
         (zero? moves)
         (let [result (board-score grid)]
@@ -109,17 +134,22 @@
                (let [tiles
                      (map (fn [tile]
                             (if (empty? tile)
-                              0
+                              (list)
                               (let [results
-                                    (map #(apply max (expected-board-scores
-                                                       % (dec moves)))
-                                         tile)]
-                                (/ (apply + results) (count results)))))
+                                    (map #(apply max-number-list
+                                                 (expected-board-scores
+                                                   % (dec moves)))
+                                         tile)
+                                    results-count (count results)]
+                                (map #(/ % results-count)
+                                     (apply sum-number-lists results)))))
                           dir)]
-                 (+ (* (first tiles) 9/10) (* (second tiles) 1/10))))
+                 (sum-number-lists (map (partial * 9/10) (first tiles))
+                                   (map (partial * 1/10) (second tiles)))))
              (all-possibilities grid))))
     :lru/threshold 65536))
 
 (defn pick-dir
   [grid moves]
-  (apply max-key (partial nth (expected-board-scores grid moves)) (range 4)))
+  (let [results (expected-board-scores grid moves)]
+    (.indexOf results (apply max-number-list results))))
