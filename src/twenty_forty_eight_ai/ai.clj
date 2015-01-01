@@ -3,6 +3,28 @@
     [clojure.core.memoize        :as memoize]
     [twenty-forty-eight-ai.board :refer :all]))
 
+(defn sum-number-lists [& lists]
+  (cond
+    (zero? (count lists)) nil
+    (every? empty? lists) nil
+    (== (count lists) 1)  (first lists)
+    :default              (cons (apply + (filter identity (map first lists)))
+                                (apply sum-number-lists (map rest lists)))))
+
+(defn max-number-list [& lists]
+  {:pre [(every? (partial every? number?) lists)]}
+  (case (count lists)
+    0 nil
+    1 (first lists)
+    (recur (cons (loop [x (first lists), y (second lists)]
+                   (cond
+                     (empty? y)              (first lists)
+                     (empty? x)              (second lists)
+                     (> (first x) (first y)) (first lists)
+                     (< (first x) (first y)) (second lists)
+                     :else                   (recur (rest x) (rest y))))
+                 (drop 2 lists)))))
+
 #_(def safe-dirs
   (memoize/lru
     (fn [grid moves]
@@ -23,7 +45,7 @@
           (filter (partial nth results) (range 4)))))
     :lru/threshold 4096))
 
-(defn flow-penalty-up
+#_(defn flow-penalty-up
   [grid]
   (apply + (map #(loop [x (filter pos? %), penalty 0]
                    (cond
@@ -54,47 +76,27 @@
   ([grid] (zigzag-score-tl-up grid zigzag-path))
   ([grid path]
    {:post [(seq? %)]}
-   (let [this (get-in grid (first path))]
-     (case (count path)
-       0
-       (list 0)
+   (let [path-count (count path)]
+     (if (zero? path-count)
+       (list)
+       (let [posn (first path)
+             this (get-in grid posn)
+             this (if (zero? (second posn))
+                    this
+                    (min this (get-in grid (map + posn [0 -1]))))]
+         (if (== path-count 1)
+           (list this)
+           (let [that (get-in grid (second path))]
+             (cond
+               (< this that)
+               (cons this (zigzag-score-tl-up grid (rest path)))
 
-       1
-       (list this)
+               (== this that)
+               (cons (* this 2) (zigzag-score-tl-up grid (drop 2 path)))
 
-       (let [that (get-in grid (second path))]
-         (cond
-           (< this that)
-           (cons this (zigzag-score-tl-up grid (rest path)))
-
-           (== this that)
-           (cons (* this 2) (zigzag-score-tl-up grid (drop 2 path)))
-
-           (> this that)
-           (let [results (zigzag-score-tl-up grid (rest path))]
-             (cons (+ this (first results)) (rest results)))))))))
-
-(defn max-number-list [& lists]
-  {:pre [(every? (partial every? number?) lists)]}
-  (case (count lists)
-    0 nil
-    1 (first lists)
-    (recur (cons (loop [x (first lists), y (second lists)]
-                   (cond
-                     (empty? y)              (first lists)
-                     (empty? x)              (second lists)
-                     (> (first x) (first y)) (first lists)
-                     (< (first x) (first y)) (second lists)
-                     :else                   (recur (rest x) (rest y))))
-                 (drop 2 lists)))))
-
-(defn sum-number-lists [& lists]
-  (cond
-    (zero? (count lists)) nil
-    (every? empty? lists) nil
-    (== (count lists) 1)  (first lists)
-    :default              (cons (apply + (filter identity (map first lists)))
-                                (apply sum-number-lists (map rest lists)))))
+               (> this that)
+               (let [results (zigzag-score-tl-up grid (rest path))]
+                 (cons (+ this (first results)) (rest results)))))))))))
 
 (defn zigzag-score
   [grid]
