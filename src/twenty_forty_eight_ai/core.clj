@@ -1,68 +1,69 @@
 (ns twenty-forty-eight-ai.core
   (:require
-    [clojure.math.numeric-tower  :refer :all]
-    [clojure.string              :refer [join]]
-    [clj-webdriver.core          :refer :all]
-    [twenty-forty-eight-ai.board :refer :all]
-    [twenty-forty-eight-ai.ai    :refer :all])
+    [clojure.string :as str]
+    [clj-webdriver.core :as web]
+    [twenty-forty-eight-ai.board :as board]
+    [twenty-forty-eight-ai.ai :as ai])
   (:gen-class))
 
 (defn now [] (java.util.Date.))
 
 (def dir-str ["Up" "Right" "Down" "Left"])
 
-(defn read-grid [driver]
-  (vec (map (fn [x]
-              (vec (map (fn [y]
-                          (let [selector (str ".tile-position-" x "-" y)
-                                elements (find-elements driver {:css selector})]
-                            (if (empty? elements)
-                              0
-                              (->
-                                elements
-                                last
-                                text
-                                Integer/parseInt))))
-                        (range 1 5))))
-            (range 1 5))))
+(def dir-button
+  (vec (map web/key-code [:arrow_up :arrow_right :arrow_down :arrow_left])))
 
-(defn read-score [driver]
-  (Integer/parseInt (text (find-element driver {:css ".best-container"}))))
+(defn read-grid* [driver]
+  (fn []
+    (mapv (fn [x]
+            (mapv (fn [y]
+                    (let [elements
+                          (->> {:css (format ".tile-position-%d-%d" x y)}
+                               (web/find-elements driver))]
+                      (if (empty? elements)
+                        0
+                        (-> elements
+                            last
+                            web/text
+                            Integer/parseInt))))
+                  (range 1 5)))
+          (range 1 5))))
+
+(defn read-score* [driver]
+  (let [score (web/find-element driver {:css ".best-container"})]
+    #(Integer/parseInt (web/text score))))
+
+(defn keep-playing* [driver]
+  (let [keep-playing (web/find-element driver {:css ".keep-playing-button"})]
+    #(when (web/displayed? keep-playing) (web/click keep-playing))))
+
+(def divider (str/join (repeat 80 \─)))
 
 (defn -main
   "Sets up, runs, and tears down the main AI loop."
   [& args]
-  (let [driver (start {:browser :chrome}
-                      "http://gabrielecirulli.github.io/2048/")]
-    (loop [moves 0
-           times nil]
-      (let [grid (read-grid driver)
-            score (read-score driver)
-            board [grid score]]
-        (print (grid-str grid))
-        (let [keep-playing (find-element driver {:css ".keep-playing-button"})]
-          (when (displayed? keep-playing) (click keep-playing)))
-        (if (game-over? grid)
+  (let [driver (web/start {:browser :chrome}
+                          (if (pos? (count args))
+                            (first args)
+                            "http://gabrielecirulli.github.io/2048/"))
+        read-grid (read-grid* driver)
+        read-score (read-score* driver)
+        keep-playing (keep-playing* driver)
+        body (web/find-element driver {:css "body"})]
+    (loop [moves 0]
+      (Thread/sleep 128)
+      (println divider)
+      (println (str (now)))
+      (println (format "Score: %d" (read-score)))
+      (let [grid (read-grid)]
+        (print (board/board-str grid))
+        (if (board/game-over? grid)
           (println "Game Over")
           (do
-            (println (str "Move " (inc moves) ":"))
-            (println (str (now)))
-            (let [start (now)
-                  dir   (pick-dir grid 3)
-                  time  (- (.getTime (now)) (.getTime start))
-                  times (cons time times)]
-              (print (str "Direction: " (dir-str dir) (format "%n")
-                          "Time:" (format "%n")
-                          "     Last: " time "ms" (format "%n")
-                          "  Average: " (quot (apply + times) (count times))
-                            "ms" (format "%n")
-                          "      Max: " (apply max times) "ms" (format "%n")))
-              (println)
-              (send-keys (find-element driver {:css "body"})
-                         (nth [(key-code :arrow_up)
-                               (key-code :arrow_right)
-                               (key-code :arrow_down)
-                               (key-code :arrow_left)]
-                              dir))
-              (Thread/sleep 128)
-              (recur (inc moves) times))))))))
+            (print (format "Move %d: " (inc moves)))
+            (flush)
+            (let [dir (ai/pick-dir grid)]
+              (println (dir-str dir))
+              (web/send-keys body (dir-button dir))
+              (keep-playing)
+              (recur (inc moves)))))))))

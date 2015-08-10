@@ -1,157 +1,89 @@
 (ns twenty-forty-eight-ai.ai
   (:require
-    [clojure.core.memoize        :as memoize]
-    [twenty-forty-eight-ai.board :refer :all]))
+   [clojure.math.numeric-tower :refer [expt]]
+   [twenty-forty-eight-ai.board :as board]))
 
-(defn sum-number-lists [& lists]
-  (cond
-    (zero? (count lists)) nil
-    (every? empty? lists) nil
-    (== (count lists) 1)  (first lists)
-    :default              (cons (apply + (filter identity (map first lists)))
-                                (apply sum-number-lists (map rest lists)))))
+(defrecord Possibility [probability board])
 
-(defn max-number-list [& lists]
-  {:pre [(every? (partial every? number?) lists)]}
-  (case (count lists)
-    0 nil
-    1 (first lists)
-    (recur (cons (loop [x (first lists), y (second lists)]
-                   (cond
-                     (empty? y)              (first lists)
-                     (empty? x)              (second lists)
-                     (> (first x) (first y)) (first lists)
-                     (< (first x) (first y)) (second lists)
-                     :else                   (recur (rest x) (rest y))))
-                 (drop 2 lists)))))
+(defn possibilities [board dir]
+  (let [new-board (board/shift board dir)]
+    (when (not= new-board board)
+      (let [new-board-open-posns (board/open-posns new-board)
+            posn-probability (/ 1 (count new-board-open-posns))
+            four-tile-probability (* posn-probability (/ 1 10))
+            two-tile-probability (* posn-probability (/ 9 10))]
+        (mapcat (fn [posn]
+                  [(Possibility. four-tile-probability (assoc-in board posn 4))
+                   (Possibility. two-tile-probability (assoc-in board posn 2))])
+                new-board-open-posns)))))
 
-#_(def safe-dirs
-  (memoize/lru
-    (fn [grid moves]
-      (cond
-        (or (zero? moves) (> (count (open-posns grid)) moves))
-        (let [results (all-possibilities grid)]
-          (filter (comp seq flatten (partial nth results)) (range 4)))
+(defn possible-dirs
+  [board]
+  (filter (fn [dir]
+            (let [old-board board
+                  new-board (board/shift board dir)]
+              (not= new-board old-board)))
+          (range 0 4)))
 
-        :else
-        (let [results
-              (pmap (fn [dir]
-                      (every? (fn [tile]
-                                (and (seq tile)
-                                     (every? #(seq (safe-dirs % (dec moves)))
-                                             tile)))
-                              dir))
-                    (all-possibilities grid))]
-          (filter (partial nth results) (range 4)))))
-    :lru/threshold 4096))
+(defn walk-possibility-tree [score-fn board moves]
+  (if (or (zero? moves) (board/game-over? board))
+    (score-fn board)
+    (->> (map (partial possibilities board) (range 0 4))
+         (map (partial map #(* (:probability %)
+                               (walk-possibility-tree score-fn
+                                                      (:board %)
+                                                      (dec moves)))))
+         (map (partial apply +))
+         sort
+         last)))
 
-#_(defn flow-penalty-up
-  [grid]
-  (apply + (map #(loop [x (filter pos? %), penalty 0]
-                   (cond
-                     (nil? (second x))
-                     penalty
+(defn permutations [board]
+  (mapcat #(let [rotated-board (board/rotate-cw board %)]
+             [rotated-board (board/flip rotated-board)])
+          (range 0 4)))
 
-                     (< (first x) (second x))
-                     (recur (rest x) (+ penalty (- (second x) (first x))))
+(def zig-zag-path
+  (mapcat #(if (odd? %1) (reverse %2) %2)
+          (range)
+          (partition 4 (for [x (range 0 4) y (range 0 4)] [x y]))))
 
-                     :else
-                     (recur (rest x) penalty)))
-                grid)))
+(defn log2 [n]
+  (/ (Math/log n) (Math/log 2)))
 
-(defn max-corner
-  [grid]
-  (apply max (for [x [0 3] y [0 3]] (get-in grid [x y]))))
-
-(def zigzag-path
-  (apply concat
-         (let [path (map (fn [y] (map #(vector % y) (range 4))) (range 4))]
-           (for [x (range 4)]
-             (let [col (nth path x)]
-               (if (odd? x)
-                 (reverse col)
-                 col))))))
-
-(defn zigzag-score-tl-up
-  ([grid] (zigzag-score-tl-up grid zigzag-path))
-  ([grid path]
-   {:post [(seq? %)]}
-   (let [path-count (count path)]
-     (if (zero? path-count)
-       (list)
-       (let [posn (first path)
-             this (get-in grid posn)
-             this (if (zero? (second posn))
-                    this
-                    (min this (get-in grid (map + posn [0 -1]))))]
-         (if (== path-count 1)
-           (list this)
-           (let [that (get-in grid (second path))]
-             (cond
-               (< this that)
-               (cons this (zigzag-score-tl-up grid (rest path)))
-
-               (== this that)
-               (cons (* this 2) (zigzag-score-tl-up grid (drop 2 path)))
-
-               (> this that)
-               (let [results (zigzag-score-tl-up grid (rest path))]
-                 (cons (+ this (first results)) (rest results)))))))))))
-
-(defn zigzag-score
-  [grid]
-  (let [grid
-        (let [[x y] (apply max-key
-                           (partial get-in grid)
-                           (for [x [0 3] y [0 3]] [x y]))]
-          (rotate-cw grid (case [x y]
-                            [0 0] 0
-                            [0 3] 1
-                            [3 3] 2
-                            [3 0] 3)))
-
-        grid*
-        (vec (map #(vec (reverse %)) (rotate-cw grid 3)))]
-    (max-number-list (zigzag-score-tl-up grid) (zigzag-score-tl-up grid*))))
-
-(defn board-score
-  [grid]
-  (if (game-over? grid)
+(defn zig-zag-score [board]
+  (if (board/game-over? board)
     0
-    (zigzag-score grid)))
+    (let [sub-path-score
+          (fn sub-path-score [values]
+            (let [[pre values]
+                  (split-with (partial not= (apply max values)) values)]
+              (/ (loop [values values, score 0]
+                   (let [[first-value second-value] values
+                         score (+ score first-value)]
+                     (cond
+                       (nil? second-value)
+                       score
 
-(def expected-board-scores
-  (memoize/lru
-    (fn [grid moves]
-      (cond
-        (game-over? grid)
-        ['() '() '() '()]
+                       (< first-value second-value)
+                       (+ score (log2 (sub-path-score (rest values))))
 
-        (zero? moves)
-        (let [result (board-score grid)]
-          [result result result result])
+                       :default
+                       (recur (rest values) score))))
+                 (expt 2 (count pre)))))]
+      (->> board
+           permutations
+           (map #(map (partial get-in %) zig-zag-path))
+           (map sub-path-score)
+           sort
+           last))))
 
-        :else
-        (map (fn [dir]
-               (let [tiles
-                     (map (fn [tile]
-                            (if (empty? tile)
-                              (list)
-                              (let [results
-                                    (map #(apply max-number-list
-                                                 (expected-board-scores
-                                                   % (dec moves)))
-                                         tile)
-                                    results-count (count results)]
-                                (map #(/ % results-count)
-                                     (apply sum-number-lists results)))))
-                          dir)]
-                 (sum-number-lists (map (partial * 9/10) (first tiles))
-                                   (map (partial * 1/10) (second tiles)))))
-             (all-possibilities grid))))
-    :lru/threshold 65536))
-
-(defn pick-dir
-  [grid moves]
-  (let [results (expected-board-scores grid moves)]
-    (.indexOf results (apply max-number-list results))))
+(defn pick-dir [board]
+  (->> board
+       possible-dirs
+       (map #(vector (walk-possibility-tree zig-zag-score
+                                            (board/shift board %)
+                                            2)
+                     %))
+       sort
+       last
+       second))
