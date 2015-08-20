@@ -1,9 +1,8 @@
 (ns twenty-forty-eight-ai.core
-  (:require
-    [clojure.string :as str]
-    [clj-webdriver.core :as web]
-    [twenty-forty-eight-ai.board :as board]
-    [twenty-forty-eight-ai.ai :as ai])
+  (:require [clj-webdriver.core :as web]
+            [clojure.string :as str]
+            [twenty-forty-eight-ai.ai :as ai]
+            [twenty-forty-eight-ai.board :as board])
   (:gen-class))
 
 (defn now [] (java.util.Date.))
@@ -13,13 +12,13 @@
 (def dir-button
   (vec (map web/key-code [:arrow_up :arrow_right :arrow_down :arrow_left])))
 
-(defn read-grid* [driver]
+(defn read-board* [driver]
   (fn []
     (mapv (fn [x]
             (mapv (fn [y]
-                    (let [elements
-                          (->> {:css (format ".tile-position-%d-%d" x y)}
-                               (web/find-elements driver))]
+                    (let [elements (web/find-elements
+                                    driver
+                                    {:css (format ".tile-position-%d-%d" x y)})]
                       (if (empty? elements)
                         0
                         (-> elements
@@ -46,7 +45,7 @@
                           (if (pos? (count args))
                             (first args)
                             "http://gabrielecirulli.github.io/2048/"))
-        read-grid (read-grid* driver)
+        read-board (read-board* driver)
         read-score (read-score* driver)
         keep-playing (keep-playing* driver)
         body (web/find-element driver {:css "body"})]
@@ -54,15 +53,16 @@
       (Thread/sleep 128)
       (println divider)
       (println (str (now)))
-      (println (format "Score: %d" (read-score)))
-      (let [grid (read-grid)]
-        (print (board/board-str grid))
-        (if (board/game-over? grid)
+      (println "Score:" (read-score))
+      (let [board (read-board)]
+        (print (board/board-str board))
+        (println "Rating:" (ai/monotonic-score board))
+        (if (board/game-over? board)
           (println "Game Over")
           (do
             (print (format "Move %d: " (inc moves)))
             (flush)
-            (let [dir (ai/pick-dir grid)]
+            (let [dir (ai/pick-dir board)]
               (println (dir-str dir))
               (web/send-keys body (dir-button dir))
               (keep-playing)
