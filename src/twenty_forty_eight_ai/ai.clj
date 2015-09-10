@@ -82,17 +82,17 @@
 (defn pick-dir [board]
   (let [possible (set (possible-dirs board))
         _ (apply println "  Possible:" (map dir-str possible))
-        safe (set (safe-dirs board 6))
-        _ (apply println "  Safe:    " (map dir-str safe))
-        allowed (set (or (seq (intersection possible safe)) possible))
-        _ (apply println "  Allowed: " (map dir-str allowed))
+        ; safe (set (safe-dirs board 6))
+        ; _ (apply println "  Safe:    " (map dir-str safe))
+        ; allowed (set (or (seq (intersection possible safe)) possible))
+        ; _ (apply println "  Allowed: " (map dir-str allowed))
         scores (map max
                     (score-trees #(long-view monotonic-score % 1) board 2)
                     (score-trees #(vector (monotonic-score %)) board 3))
         _ (println "  Scores:  " (map #(bit-shift-right (long %) 44) scores))
         pick (->> scores
                (map-indexed vector)
-               (filter (comp allowed first))
+              ;  (filter (comp allowed first))
                (apply max-key second)
                first)
         _ (println "  Pick:    " (dir-str pick))]
