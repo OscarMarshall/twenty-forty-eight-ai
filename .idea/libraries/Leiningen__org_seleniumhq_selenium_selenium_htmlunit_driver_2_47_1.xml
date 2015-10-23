@@ -1,0 +1,9 @@
+<component name="libraryTable">
+  <library name="Leiningen: org.seleniumhq.selenium/selenium-htmlunit-driver:2.47.1">
+    <CLASSES>
+      <root url="jar://$USER_HOME$/.m2/repository/org/seleniumhq/selenium/selenium-htmlunit-driver/2.47.1/selenium-htmlunit-driver-2.47.1.jar!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>
