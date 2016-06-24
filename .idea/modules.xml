@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/twenty_forty_eight_ai.iml" filepath="$PROJECT_DIR$/twenty_forty_eight_ai.iml" />
+      <module fileurl="file://$PROJECT_DIR$/twenty-forty-eight-ai.iml" filepath="$PROJECT_DIR$/twenty-forty-eight-ai.iml" />
     </modules>
   </component>
 </project>

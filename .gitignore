@@ -1,10 +1,4 @@
-/.idea/workspace.xml
-/target
-/classes
-/checkouts
-pom.xml
-pom.xml.asc
-*.jar
-*.class
-/.lein-*
+/.idea/
+/target/
 /.nrepl-port
+/twenty-forty-eight-ai.iml
